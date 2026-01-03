@@ -1,469 +1,374 @@
-import React, { useState, useEffect } from 'react';
-import { PlusCircle, Download, Trash2, Edit2, Check, X, AlertCircle, History, FileText, ChevronRight, Calendar, Settings } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activity Tracker</title>
+    <!-- React, ReactDOM, and Babel for in-browser JSX transformation -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Custom animations to match the React app experience */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideInUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-in { animation: fadeIn 0.3s ease-out forwards; }
+        .slide-in-from-bottom { animation: slideInUp 0.3s ease-out forwards; }
+        
+        /* Ensure the date-time input looks consistent across mobile browsers */
+        input[type="datetime-local"] {
+            min-height: 3rem;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans">
+    <div id="root"></div>
 
-// Helper to format date for datetime-local input (YYYY-MM-DDTHH:mm)
-const getNowForInput = () => {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-  return now.toISOString().slice(0, 16);
-};
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-// FormContent component
-const FormContent = ({ data, onChange, onToggle }) => {
-  const isManual = data.category === 'Manual';
+        // Custom Icon Component to handle Lucide icons in a browser-ready way
+        const Icon = ({ name, size = 24, className = "" }) => {
+            useEffect(() => {
+                // This triggers the Lucide library to replace the <i> tag with an SVG
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [name]);
 
-  return (
-    <div className="space-y-6">
-      {/* Date Input Field - Always Shown */}
-      <div className="relative">
-        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest flex items-center gap-1">
-          <Calendar size={12} /> Date & Time
-        </label>
-        <input 
-          type="datetime-local"
-          value={data.date}
-          onChange={(e) => onChange({...data, date: e.target.value})}
-          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 md:p-3 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all text-slate-700"
-        />
-      </div>
+            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+        };
 
-      <div className={`grid ${isManual ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
-        {/* Status Select - Hidden for Manual */}
-        {!isManual && (
-          <div className="relative">
-            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">Status</label>
-            <select 
-              value={data.asked}
-              onChange={(e) => onChange({...data, asked: e.target.value})}
-              className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 md:p-3 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none appearance-none transition-all text-slate-700"
-            >
-              <option>Asked</option>
-              <option>Did Not Ask</option>
-            </select>
-            <div className="absolute right-4 bottom-4 pointer-events-none text-slate-400">
-              <ChevronRight size={16} className="rotate-90" />
-            </div>
-          </div>
-        )}
+        const getNowForInput = () => {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            return now.toISOString().slice(0, 16);
+        };
 
-        {/* Planning Select - Renamed for Manual */}
-        <div className="relative">
-          <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
-            {isManual ? 'Type' : 'Planning'}
-          </label>
-          <select 
-            value={data.planned}
-            onChange={(e) => onChange({...data, planned: e.target.value})}
-            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 md:p-3 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none appearance-none transition-all text-slate-700"
-          >
-            <option value="Planned">{isManual ? 'P' : 'Planned'}</option>
-            <option value="Not Planned">{isManual ? 'No P' : 'Not Planned'}</option>
-          </select>
-          <div className="absolute right-4 bottom-4 pointer-events-none text-slate-400">
-            <ChevronRight size={16} className="rotate-90" />
-          </div>
-        </div>
-      </div>
+        const FormContent = ({ data, onChange, onToggle }) => {
+            const isManual = data.category === 'Manual';
 
-      {/* Manual and Received get Checkboxes - Hidden for Manual per request */}
-      {data.category === 'Received' && (
-        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-          <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 ml-1 tracking-widest">Details (Check all that apply)</label>
-          <div className="grid grid-cols-2 gap-3">
-            {Object.keys(data.details).map(key => (
-              <button 
-                key={key}
-                type="button"
-                onClick={() => onToggle(key)}
-                className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all font-bold active:scale-95 ${data.details[key] ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'}`}
-              >
-                <span className="text-sm truncate mr-2">{key}</span>
-                {data.details[key] ? <Check size={16} /> : <div className="w-4 h-4 rounded-full border border-slate-200" />}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Notes - Hidden for Manual per request */}
-      {data.category === 'Did Not Receive' && (
-        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-          <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">Notes</label>
-          <textarea 
-            value={data.notes}
-            onChange={(e) => onChange({...data, notes: e.target.value})}
-            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 h-32 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 outline-none text-lg transition-all"
-            placeholder="Enter any additional details..."
-          />
-        </div>
-      )}
-    </div>
-  );
-};
-
-const App = () => {
-  const [entries, setEntries] = useState([]);
-  const [showDnrModal, setShowDnrModal] = useState(false);
-  const [showRecModal, setShowRecModal] = useState(false);
-  const [showManualModal, setShowManualModal] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-
-  const [formData, setFormData] = useState({
-    category: '',
-    asked: 'Asked',
-    planned: 'Planned',
-    date: getNowForInput(),
-    notes: '',
-    details: {
-      Him: false,
-      Her: false,
-      Both: false,
-      'Multiple Times': false,
-      GH: false,
-      RH: false,
-      SV: false,
-      SB: false,
-      T: false,
-      NT: false
-    }
-  });
-
-  useEffect(() => {
-    const saved = localStorage.getItem('tracker_data');
-    if (saved) {
-      try {
-        setEntries(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to parse saved data", e);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('tracker_data', JSON.stringify(entries));
-  }, [entries]);
-
-  const resetForm = (category = '') => {
-    setFormData({
-      category: category,
-      asked: 'Asked',
-      planned: 'Planned',
-      date: getNowForInput(),
-      notes: '',
-      details: {
-        Him: false,
-        Her: false,
-        Both: false,
-        'Multiple Times': false,
-        GH: false,
-        RH: false,
-        SV: false,
-        SB: false,
-        T: false,
-        NT: false
-      }
-    });
-  };
-
-  const handleAddEntry = (category) => {
-    const newEntry = {
-      ...formData,
-      category: category,
-      id: Date.now(),
-      timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-    };
-    setEntries([newEntry, ...entries]);
-    setShowDnrModal(false);
-    setShowRecModal(false);
-    setShowManualModal(false);
-    resetForm();
-  };
-
-  const deleteEntry = (id) => {
-    if (window.confirm("Delete this entry?")) {
-      setEntries(entries.filter(e => e.id !== id));
-    }
-  };
-
-  const startEditing = (entry) => {
-    setEditingId(entry.id);
-    setFormData({ 
-      ...entry,
-      details: {
-        T: false,
-        NT: false,
-        ...entry.details
-      }
-    });
-  };
-
-  const saveEdit = () => {
-    const updatedEntry = {
-      ...formData,
-      id: editingId,
-      timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-    };
-    setEntries(entries.map(e => e.id === editingId ? updatedEntry : e));
-    setEditingId(null);
-    resetForm();
-  };
-
-  const toggleDetail = (key) => {
-    setFormData(prev => ({
-      ...prev,
-      details: {
-        ...prev.details,
-        [key]: !prev.details[key]
-      }
-    }));
-  };
-
-  const exportToCSV = () => {
-    const headers = [
-      "Date", "Category", "Asked/Not", "Planned/Not", "Notes", 
-      "Him", "Her", "Both", "Multiple Times", "GH", "RH", "SV", "SB", "T", "NT"
-    ];
-
-    const rows = entries.map(e => [
-      `"${e.date || e.timestamp}"`,
-      `"${e.category}"`,
-      `"${e.asked}"`,
-      `"${e.planned}"`,
-      `"${e.notes || ''}"`,
-      e.details.Him ? "X" : "",
-      e.details.Her ? "X" : "",
-      e.details.Both ? "X" : "",
-      e.details['Multiple Times'] ? "X" : "",
-      e.details.GH ? "X" : "",
-      e.details.RH ? "X" : "",
-      e.details.SV ? "X" : "",
-      e.details.SB ? "X" : "",
-      e.details.T ? "X" : "",
-      e.details.NT ? "X" : ""
-    ]);
-
-    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `tracker_export_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const Modal = ({ title, isOpen, onClose, onSave, children }) => {
-    if (!isOpen) return null;
-    return (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 transition-all">
-        <div className="bg-white rounded-t-[2.5rem] md:rounded-3xl shadow-2xl w-full max-w-lg max-h-[95vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 ease-out">
-          <div className="px-6 pt-6 pb-4 flex justify-between items-center">
-            <h3 className="text-2xl font-black text-slate-800 tracking-tight">{title}</h3>
-            <button onClick={onClose} className="p-2 bg-slate-100 text-slate-400 rounded-full hover:text-slate-600 active:scale-90 transition-all"><X size={20} /></button>
-          </div>
-          <div className="p-6 overflow-y-auto flex-1 overscroll-contain">
-            {children}
-          </div>
-          <div className="px-6 py-5 bg-white border-t border-slate-50 flex flex-col md:flex-row gap-3">
-            <button 
-              onClick={onSave} 
-              className="w-full md:order-2 px-6 py-4 md:py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 active:scale-95 transition-all font-bold text-lg md:text-base shadow-xl shadow-blue-100 flex items-center justify-center gap-2"
-            >
-              <Check size={20} />
-              Confirm Entry
-            </button>
-            <button 
-              onClick={onClose} 
-              className="w-full md:order-1 px-6 py-4 md:py-3 text-slate-400 font-bold md:font-medium hover:bg-slate-50 rounded-2xl transition-all"
-            >
-              Discard
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-24 md:pb-12">
-      <div className="max-w-5xl mx-auto px-4 pt-8 md:pt-12">
-        <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 text-center md:text-left">
-          <div>
-            <h1 className="text-5xl font-black tracking-tighter text-slate-900 leading-none mb-2">TRACKER</h1>
-            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">Activity Log System</p>
-          </div>
-          <button 
-            onClick={exportToCSV}
-            disabled={entries.length === 0}
-            className="flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white px-8 py-4 rounded-2xl font-black text-sm shadow-xl shadow-emerald-100 transition-all disabled:opacity-50 disabled:grayscale"
-          >
-            <Download size={18} />
-            EXPORT DATA (CSV)
-          </button>
-        </header>
-
-        {/* Primary Interaction Buttons (Three Categories) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
-          <button 
-            onClick={() => { resetForm('Manual'); setShowManualModal(true); }}
-            className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-indigo-400 hover:shadow-md"
-          >
-            <div className="p-5 rounded-2xl bg-indigo-50 text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition-all shadow-sm">
-              <Settings size={40} />
-            </div>
-            <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4">Manual</h2>
-          </button>
-
-          <button 
-            onClick={() => { resetForm('Did Not Receive'); setShowDnrModal(true); }}
-            className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-red-400 hover:shadow-md"
-          >
-            <div className="p-5 rounded-2xl bg-red-50 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-all shadow-sm">
-              <AlertCircle size={40} />
-            </div>
-            <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center">Did Not Receive</h2>
-          </button>
-
-          <button 
-            onClick={() => { resetForm('Received'); setShowRecModal(true); }}
-            className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-blue-400 hover:shadow-md"
-          >
-            <div className="p-5 rounded-2xl bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all shadow-sm">
-              <PlusCircle size={40} />
-            </div>
-            <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center">Received</h2>
-          </button>
-        </div>
-
-        <div className="mb-6 flex items-center justify-between px-2">
-          <h3 className="text-xs font-black tracking-[0.3em] text-slate-400 uppercase flex items-center gap-2">
-            <History size={16} />
-            History Log
-          </h3>
-          <div className="h-[1px] flex-1 mx-4 bg-slate-200"></div>
-          <span className="text-[10px] font-black px-2 py-1 bg-slate-900 text-white rounded tracking-widest">{entries.length}</span>
-        </div>
-
-        {/* History Feed */}
-        {entries.length === 0 ? (
-          <div className="bg-white rounded-[2rem] p-16 text-center border-2 border-dashed border-slate-200 flex flex-col items-center">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4">
-              <FileText size={32} />
-            </div>
-            <h4 className="text-slate-800 font-bold mb-1">Your log is empty</h4>
-            <p className="text-slate-400 text-sm">Start tracking results using the buttons above.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {entries.map((entry) => (
-              <div key={entry.id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group">
-                <div className="flex justify-between items-start gap-4 text-left">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider ${
-                        entry.category === 'Received' ? 'bg-blue-600 text-white' : 
-                        entry.category === 'Manual' ? 'bg-indigo-600 text-white' : 
-                        'bg-red-500 text-white'
-                      }`}>
-                        {entry.category}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">
-                        {entry.timestamp}
-                      </span>
+            return (
+                <div className="space-y-6">
+                    <div className="relative">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest flex items-center gap-1">
+                            <Icon name="calendar" size={12} /> Date & Time
+                        </label>
+                        <input 
+                            type="datetime-local"
+                            value={data.date}
+                            onChange={(e) => onChange({...data, date: e.target.value})}
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 md:p-3 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all text-slate-700"
+                        />
                     </div>
-                    <h4 className="font-black text-xl text-slate-800 flex items-center flex-wrap gap-x-2">
-                      {entry.category !== 'Manual' ? entry.asked : 'Manual Entry'}
-                      <ChevronRight size={14} className="text-slate-300" />
-                      <span className="text-slate-500 font-bold">
-                        {entry.category === 'Manual' 
-                          ? (entry.planned === 'Planned' ? 'P' : 'No P') 
-                          : entry.planned
-                        }
-                      </span>
-                    </h4>
-                    
-                    <div className="mt-4 space-y-3">
-                      {/* Show Checkboxes if they exist */}
-                      {Object.values(entry.details || {}).some(v => v) && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {Object.entries(entry.details).filter(([_, v]) => v).map(([k]) => (
-                            <span key={k} className="bg-slate-100 text-slate-600 text-[10px] px-3 py-1 rounded-lg font-black uppercase border border-slate-200">
-                              {k}
-                            </span>
-                          ))}
+
+                    <div className={`grid ${isManual ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
+                        {!isManual && (
+                            <div className="relative">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">Status</label>
+                                <select 
+                                    value={data.asked}
+                                    onChange={(e) => onChange({...data, asked: e.target.value})}
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 md:p-3 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none appearance-none transition-all text-slate-700"
+                                >
+                                    <option>Asked</option>
+                                    <option>Did Not Ask</option>
+                                </select>
+                                <div className="absolute right-4 bottom-4 pointer-events-none text-slate-400">
+                                    <Icon name="chevron-right" size={16} className="rotate-90" />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="relative">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
+                                {isManual ? 'Type' : 'Planning'}
+                            </label>
+                            <select 
+                                value={data.planned}
+                                onChange={(e) => onChange({...data, planned: e.target.value})}
+                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 md:p-3 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none appearance-none transition-all text-slate-700"
+                            >
+                                <option value="Planned">{isManual ? 'P' : 'Planned'}</option>
+                                <option value="Not Planned">{isManual ? 'No P' : 'Not Planned'}</option>
+                            </select>
+                            <div className="absolute right-4 bottom-4 pointer-events-none text-slate-400">
+                                <Icon name="chevron-right" size={16} className="rotate-90" />
+                            </div>
                         </div>
-                      )}
-                      
-                      {/* Show Notes if they exist */}
-                      {entry.notes && (
-                        <div className="bg-slate-50 p-3 rounded-xl border-l-4 border-slate-200 text-slate-600 text-sm leading-relaxed italic">
-                          {entry.notes}
-                        </div>
-                      )}
-                      
-                      {!entry.notes && !Object.values(entry.details || {}).some(v => v) && entry.category !== 'Manual' && (
-                        <span className="text-slate-300 text-xs italic">No additional details</span>
-                      )}
                     </div>
-                  </div>
-                  
-                  <div className="flex flex-col gap-2 opacity-100 md:opacity-20 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => startEditing(entry)} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all">
-                      <Edit2 size={20} />
-                    </button>
-                    <button onClick={() => deleteEntry(entry.id)} className="p-3 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all">
-                      <Trash2 size={20} />
-                    </button>
-                  </div>
+
+                    {data.category === 'Received' && (
+                        <div className="animate-in">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 ml-1 tracking-widest">Details (Check all that apply)</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                {Object.keys(data.details).map(key => (
+                                    <button 
+                                        key={key}
+                                        type="button"
+                                        onClick={() => onToggle(key)}
+                                        className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all font-bold active:scale-95 ${data.details[key] ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'}`}
+                                    >
+                                        <span className="text-sm truncate mr-2">{key}</span>
+                                        {data.details[key] ? <Icon name="check" size={16} /> : <div className="w-4 h-4 rounded-full border border-slate-200"></div>}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {data.category === 'Did Not Receive' && (
+                        <div className="animate-in">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">Notes</label>
+                            <textarea 
+                                value={data.notes}
+                                onChange={(e) => onChange({...data, notes: e.target.value})}
+                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 h-32 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 outline-none text-lg transition-all"
+                                placeholder="Enter any additional details..."
+                            />
+                        </div>
+                    )}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+            );
+        };
 
-      <Modal 
-        title={`Edit Entry`}
-        isOpen={editingId !== null}
-        onClose={() => { setEditingId(null); resetForm(); }}
-        onSave={saveEdit}
-      >
-        <FormContent data={formData} onChange={setFormData} onToggle={toggleDetail} />
-      </Modal>
+        const App = () => {
+            const [entries, setEntries] = useState([]);
+            const [showDnrModal, setShowDnrModal] = useState(false);
+            const [showRecModal, setShowRecModal] = useState(false);
+            const [showManualModal, setShowManualModal] = useState(false);
+            const [editingId, setEditingId] = useState(null);
 
-      <Modal 
-        title="Manual Entry"
-        isOpen={showManualModal}
-        onClose={() => setShowManualModal(false)}
-        onSave={() => handleAddEntry('Manual')}
-      >
-        <FormContent data={formData} onChange={setFormData} onToggle={toggleDetail} />
-      </Modal>
+            const [formData, setFormData] = useState({
+                category: '',
+                asked: 'Asked',
+                planned: 'Planned',
+                date: getNowForInput(),
+                notes: '',
+                details: {
+                    Him: false, Her: false, Both: false, 'Multiple Times': false,
+                    GH: false, RH: false, SV: false, SB: false, T: false, NT: false
+                }
+            });
 
-      <Modal 
-        title="Did Not Receive"
-        isOpen={showDnrModal}
-        onClose={() => setShowDnrModal(false)}
-        onSave={() => handleAddEntry('Did Not Receive')}
-      >
-        <FormContent data={formData} onChange={setFormData} onToggle={toggleDetail} />
-      </Modal>
+            useEffect(() => {
+                const saved = localStorage.getItem('tracker_data');
+                if (saved) {
+                    try { setEntries(JSON.parse(saved)); } catch (e) { console.error(e); }
+                }
+            }, []);
 
-      <Modal 
-        title="Received Entry"
-        isOpen={showRecModal}
-        onClose={() => setShowRecModal(false)}
-        onSave={() => handleAddEntry('Received')}
-      >
-        <FormContent data={formData} onChange={setFormData} onToggle={toggleDetail} />
-      </Modal>
+            useEffect(() => {
+                localStorage.setItem('tracker_data', JSON.stringify(entries));
+                if (window.lucide) window.lucide.createIcons();
+            }, [entries]);
 
-      <footer className="mt-20 py-8 text-center text-slate-400 text-[10px] font-black tracking-[0.4em] uppercase">
-        Encrypted Session • Browser Storage
-      </footer>
-    </div>
-  );
-};
+            const resetForm = (category = '') => {
+                setFormData({
+                    category: category,
+                    asked: 'Asked',
+                    planned: 'Planned',
+                    date: getNowForInput(),
+                    notes: '',
+                    details: {
+                        Him: false, Her: false, Both: false, 'Multiple Times': false,
+                        GH: false, RH: false, SV: false, SB: false, T: false, NT: false
+                    }
+                });
+            };
 
-export default App;
+            const handleAddEntry = (category) => {
+                const newEntry = {
+                    ...formData,
+                    category: category,
+                    id: Date.now(),
+                    timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                };
+                setEntries([newEntry, ...entries]);
+                setShowDnrModal(false);
+                setShowRecModal(false);
+                setShowManualModal(false);
+                resetForm();
+            };
+
+            const deleteEntry = (id) => {
+                if (window.confirm("Delete this entry?")) {
+                    setEntries(entries.filter(e => e.id !== id));
+                }
+            };
+
+            const startEditing = (entry) => {
+                setEditingId(entry.id);
+                setFormData({ ...entry });
+            };
+
+            const saveEdit = () => {
+                const updatedEntry = {
+                    ...formData,
+                    id: editingId,
+                    timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                };
+                setEntries(entries.map(e => e.id === editingId ? updatedEntry : e));
+                setEditingId(null);
+                resetForm();
+            };
+
+            const toggleDetail = (key) => {
+                setFormData(prev => ({
+                    ...prev,
+                    details: { ...prev.details, [key]: !prev.details[key] }
+                }));
+            };
+
+            const exportToCSV = () => {
+                const headers = ["Date", "Category", "Asked/Not", "Planned/Not", "Notes", "Him", "Her", "Both", "Multiple Times", "GH", "RH", "SV", "SB", "T", "NT"];
+                const rows = entries.map(e => [
+                    `"${e.date || e.timestamp}"`, `"${e.category}"`, `"${e.asked}"`, `"${e.planned}"`, `"${e.notes || ''}"`,
+                    e.details.Him ? "X" : "", e.details.Her ? "X" : "", e.details.Both ? "X" : "", e.details['Multiple Times'] ? "X" : "",
+                    e.details.GH ? "X" : "", e.details.RH ? "X" : "", e.details.SV ? "X" : "", e.details.SB ? "X" : "",
+                    e.details.T ? "X" : "", e.details.NT ? "X" : ""
+                ]);
+                const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", `tracker_export.csv`);
+                link.click();
+            };
+
+            const Modal = ({ title, isOpen, onClose, onSave, children }) => {
+                if (!isOpen) return null;
+                return (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50">
+                        <div className="bg-white rounded-t-[2.5rem] md:rounded-3xl shadow-2xl w-full max-w-lg max-h-[95vh] flex flex-col overflow-hidden slide-in-from-bottom">
+                            <div className="px-6 pt-6 pb-4 flex justify-between items-center">
+                                <h3 className="text-2xl font-black text-slate-800 tracking-tight">{title}</h3>
+                                <button onClick={onClose} className="p-2 bg-slate-100 text-slate-400 rounded-full hover:text-slate-600 active:scale-90 transition-all"><Icon name="x" size={20} /></button>
+                            </div>
+                            <div className="p-6 overflow-y-auto flex-1 overscroll-contain">
+                                {children}
+                            </div>
+                            <div className="px-6 py-5 bg-white border-t border-slate-50 flex flex-col md:flex-row gap-3">
+                                <button onClick={onSave} className="w-full md:order-2 px-6 py-4 md:py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 active:scale-95 transition-all font-bold text-lg md:text-base shadow-xl shadow-blue-100 flex items-center justify-center gap-2">
+                                    <Icon name="check" size={20} /> Confirm Entry
+                                </button>
+                                <button onClick={onClose} className="w-full md:order-1 px-6 py-4 md:py-3 text-slate-400 font-bold md:font-medium hover:bg-slate-50 rounded-2xl transition-all">Discard</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen pb-24 md:pb-12">
+                    <div className="max-w-5xl mx-auto px-4 pt-8 md:pt-12">
+                        <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 text-center md:text-left">
+                            <div>
+                                <h1 className="text-5xl font-black tracking-tighter text-slate-900 leading-none mb-2">TRACKER</h1>
+                                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">Activity Log System</p>
+                            </div>
+                            <button 
+                                onClick={exportToCSV}
+                                disabled={entries.length === 0}
+                                className="flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white px-8 py-4 rounded-2xl font-black text-sm shadow-xl shadow-emerald-100 transition-all disabled:opacity-50 disabled:grayscale"
+                            >
+                                <Icon name="download" size={18} /> EXPORT DATA (CSV)
+                            </button>
+                        </header>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+                            <button onClick={() => { resetForm('Manual'); setShowManualModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-indigo-400 hover:shadow-md">
+                                <div className="p-5 rounded-2xl bg-indigo-50 text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition-all shadow-sm"><Icon name="settings" size={40} /></div>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4">Manual</h2>
+                            </button>
+                            <button onClick={() => { resetForm('Did Not Receive'); setShowDnrModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-red-400 hover:shadow-md">
+                                <div className="p-5 rounded-2xl bg-red-50 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-all shadow-sm"><Icon name="alert-circle" size={40} /></div>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center">Did Not Receive</h2>
+                            </button>
+                            <button onClick={() => { resetForm('Received'); setShowRecModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-blue-400 hover:shadow-md">
+                                <div className="p-5 rounded-2xl bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all shadow-sm"><Icon name="plus-circle" size={40} /></div>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center">Received</h2>
+                            </button>
+                        </div>
+
+                        <div className="mb-6 flex items-center justify-between px-2">
+                            <h3 className="text-xs font-black tracking-[0.3em] text-slate-400 uppercase flex items-center gap-2"><Icon name="history" size={16} /> History Log</h3>
+                            <div className="h-[1px] flex-1 mx-4 bg-slate-200"></div>
+                            <span className="text-[10px] font-black px-2 py-1 bg-slate-900 text-white rounded tracking-widest">{entries.length}</span>
+                        </div>
+
+                        {entries.length === 0 ? (
+                            <div className="bg-white rounded-[2rem] p-16 text-center border-2 border-dashed border-slate-200 flex flex-col items-center">
+                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4"><Icon name="file-text" size={32} /></div>
+                                <h4 className="text-slate-800 font-bold mb-1">Your log is empty</h4>
+                                <p className="text-slate-400 text-sm">Start tracking results using the buttons above.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {entries.map((entry) => (
+                                    <div key={entry.id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group">
+                                        <div className="flex justify-between items-start gap-4 text-left">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider ${entry.category === 'Received' ? 'bg-blue-600 text-white' : entry.category === 'Manual' ? 'bg-indigo-600 text-white' : 'bg-red-500 text-white'}`}>
+                                                        {entry.category}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">{entry.timestamp}</span>
+                                                </div>
+                                                <h4 className="font-black text-xl text-slate-800 flex items-center flex-wrap gap-x-2">
+                                                    {entry.category !== 'Manual' ? entry.asked : 'Manual Entry'}
+                                                    <Icon name="chevron-right" size={14} className="text-slate-300" />
+                                                    <span className="text-slate-500 font-bold">{entry.category === 'Manual' ? (entry.planned === 'Planned' ? 'P' : 'No P') : entry.planned}</span>
+                                                </h4>
+                                                <div className="mt-4 space-y-3">
+                                                    {Object.values(entry.details || {}).some(v => v) && (
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {Object.entries(entry.details).filter(([_, v]) => v).map(([k]) => (
+                                                                <span key={k} className="bg-slate-100 text-slate-600 text-[10px] px-3 py-1 rounded-lg font-black uppercase border border-slate-200">{k}</span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {entry.notes && (
+                                                        <div className="bg-slate-50 p-3 rounded-xl border-l-4 border-slate-200 text-slate-600 text-sm leading-relaxed italic">{entry.notes}</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col gap-2">
+                                                <button onClick={() => startEditing(entry)} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"><Icon name="edit-2" size={20} /></button>
+                                                <button onClick={() => deleteEntry(entry.id)} className="p-3 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all"><Icon name="trash-2" size={20} /></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <Modal title={`Edit Entry`} isOpen={editingId !== null} onClose={() => { setEditingId(null); resetForm(); }} onSave={saveEdit}>
+                        <FormContent data={formData} onChange={setFormData} onToggle={toggleDetail} />
+                    </Modal>
+                    <Modal title="Manual Entry" isOpen={showManualModal} onClose={() => setShowManualModal(false)} onSave={() => handleAddEntry('Manual')}>
+                        <FormContent data={{...formData, category: 'Manual'}} onChange={setFormData} onToggle={toggleDetail} />
+                    </Modal>
+                    <Modal title="Did Not Receive" isOpen={showDnrModal} onClose={() => setShowDnrModal(false)} onSave={() => handleAddEntry('Did Not Receive')}>
+                        <FormContent data={{...formData, category: 'Did Not Receive'}} onChange={setFormData} onToggle={toggleDetail} />
+                    </Modal>
+                    <Modal title="Received Entry" isOpen={showRecModal} onClose={() => setShowRecModal(false)} onSave={() => handleAddEntry('Received')}>
+                        <FormContent data={{...formData, category: 'Received'}} onChange={setFormData} onToggle={toggleDetail} />
+                    </Modal>
+
+                    <footer className="mt-20 py-8 text-center text-slate-400 text-[10px] font-black tracking-[0.4em] uppercase">Browser Storage Active</footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
