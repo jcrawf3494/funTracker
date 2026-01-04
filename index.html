@@ -81,7 +81,7 @@
                                 <select 
                                     value={data.asked}
                                     onChange={(e) => onChange({...data, asked: e.target.value})}
-                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold focus:border-blue-500 outline-none appearance-none transition-all text-slate-700"
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none appearance-none transition-all text-slate-700"
                                 >
                                     <option>Asked</option>
                                     <option>Did Not Ask</option>
@@ -95,7 +95,7 @@
                             <select 
                                 value={data.planned}
                                 onChange={(e) => onChange({...data, planned: e.target.value})}
-                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold focus:border-blue-500 outline-none appearance-none transition-all text-slate-700"
+                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none appearance-none transition-all text-slate-700"
                             >
                                 <option value="Planned">{isManual ? 'P' : 'Planned'}</option>
                                 <option value="Not Planned">{isManual ? 'No P' : 'Not Planned'}</option>
@@ -148,16 +148,29 @@
             const [showSettingsModal, setShowSettingsModal] = useState(false);
             const [editingId, setEditingId] = useState(null);
 
-            const [formData, setFormData] = useState({
+            const initialFormState = {
                 category: '', asked: 'Asked', planned: 'Planned', date: getNowForInput(), notes: '',
                 details: { Him: false, Her: false, Both: false, 'Multiple Times': false, GH: false, RH: false, SV: false, SB: false, T: false, NT: false }
-            });
+            };
 
-            // Identity used for Firestore path
-            const effectiveUserId = useMemo(() => {
-                if (syncId && syncId.trim().length > 3) return `shared_${syncId.trim()}`;
-                return user?.uid;
-            }, [syncId, user]);
+            const [formData, setFormData] = useState(initialFormState);
+
+            const resetForm = (category = '') => {
+                setFormData({ ...initialFormState, category, date: getNowForInput() });
+            };
+
+            // Firestore Path Calculation based on Sync ID
+            const getFirestoreRef = (db) => {
+                const { collection, doc } = window.FirebaseSDK;
+                if (syncId && syncId.trim().length > 3) {
+                    // Shared/Public Path for Syncing across different device UIDs
+                    return collection(db, 'artifacts', appId, 'public', 'data', syncId.trim());
+                } else if (user) {
+                    // Private path fallback
+                    return collection(db, 'artifacts', appId, 'users', user.uid, 'entries');
+                }
+                return null;
+            };
 
             useEffect(() => {
                 if (!window.FirebaseSDK) return;
@@ -185,10 +198,11 @@
             };
 
             useEffect(() => {
-                if (isLocalMode || !effectiveUserId || !window.FirebaseSDK) return;
-                const { getFirestore, collection, onSnapshot } = window.FirebaseSDK;
+                if (isLocalMode || (!user && !syncId) || !window.FirebaseSDK) return;
+                const { getFirestore, onSnapshot } = window.FirebaseSDK;
                 const db = getFirestore();
-                const entriesCol = collection(db, 'artifacts', appId, 'users', effectiveUserId, 'entries');
+                const entriesCol = getFirestoreRef(db);
+                if (!entriesCol) return;
                 
                 setSyncStatus('syncing');
                 const unsubscribe = onSnapshot(entriesCol, (snapshot) => {
@@ -197,34 +211,37 @@
                     setEntries(data);
                     setSyncStatus('synced');
                 }, (err) => {
-                    console.error("Sync error", err);
+                    console.error("Sync error - Ensure rules allow access to public/data/", err);
                     switchToLocal();
                 });
                 return () => unsubscribe();
-            }, [effectiveUserId, isLocalMode]);
+            }, [user, syncId, isLocalMode]);
 
             const handleAddEntry = async (category) => {
                 const id = Date.now().toString();
                 const newEntry = { ...formData, category, timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) };
 
-                if (!isLocalMode && effectiveUserId && window.FirebaseSDK) {
+                if (!isLocalMode && window.FirebaseSDK) {
                     const { getFirestore, doc, setDoc } = window.FirebaseSDK;
                     const db = getFirestore();
-                    await setDoc(doc(db, 'artifacts', appId, 'users', effectiveUserId, 'entries', id), newEntry);
+                    const ref = getFirestoreRef(db);
+                    await setDoc(doc(ref, id), newEntry);
                 } else {
                     const updated = [ { ...newEntry, id }, ...entries ];
                     setEntries(updated);
                     localStorage.setItem('tracker_backup', JSON.stringify(updated));
                 }
                 setShowDnrModal(false); setShowRecModal(false); setShowManualModal(false);
-                setFormData({ ...formData, category: '', asked: 'Asked', planned: 'Planned', date: getNowForInput(), notes: '', details: { Him: false, Her: false, Both: false, 'Multiple Times': false, GH: false, RH: false, SV: false, SB: false, T: false, NT: false } });
+                resetForm();
             };
 
             const deleteEntry = async (id) => {
                 if (!window.confirm("Delete entry?")) return;
-                if (!isLocalMode && effectiveUserId && window.FirebaseSDK) {
+                if (!isLocalMode && window.FirebaseSDK) {
                     const { getFirestore, doc, deleteDoc } = window.FirebaseSDK;
-                    await deleteDoc(doc(getFirestore(), 'artifacts', appId, 'users', effectiveUserId, 'entries', id));
+                    const db = getFirestore();
+                    const ref = getFirestoreRef(db);
+                    await deleteDoc(doc(ref, id));
                 } else {
                     const updated = entries.filter(e => e.id !== id);
                     setEntries(updated);
@@ -234,24 +251,27 @@
 
             const saveEdit = async () => {
                 const updated = { ...formData, timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) };
-                if (!isLocalMode && effectiveUserId) {
+                if (!isLocalMode && window.FirebaseSDK) {
                     const { getFirestore, doc, setDoc } = window.FirebaseSDK;
-                    await setDoc(doc(getFirestore(), 'artifacts', appId, 'users', effectiveUserId, 'entries', editingId), updated);
+                    const db = getFirestore();
+                    const ref = getFirestoreRef(db);
+                    await setDoc(doc(ref, editingId), updated);
                 } else {
                     const list = entries.map(e => e.id === editingId ? { ...updated, id: editingId } : e);
                     setEntries(list);
                     localStorage.setItem('tracker_backup', JSON.stringify(list));
                 }
                 setEditingId(null);
+                resetForm();
             };
 
             const exportToCSV = () => {
                 const headers = ["Date", "Category", "Asked/Not", "Planned/Not", "Notes", "Him", "Her", "Both", "Multiple Times", "GH", "RH", "SV", "SB", "T", "NT"];
                 const rows = entries.map(e => [
                     `"${e.date}"`, `"${e.category}"`, `"${e.asked}"`, `"${e.planned}"`, `"${e.notes || ''}"`,
-                    e.details.Him ? "X" : "", e.details.Her ? "X" : "", e.details.Both ? "X" : "", e.details['Multiple Times'] ? "X" : "",
-                    e.details.GH ? "X" : "", e.details.RH ? "X" : "", e.details.SV ? "X" : "", e.details.SB ? "X" : "",
-                    e.details.T ? "X" : "", e.details.NT ? "X" : ""
+                    e.details?.Him ? "X" : "", e.details?.Her ? "X" : "", e.details?.Both ? "X" : "", e.details?.['Multiple Times'] ? "X" : "",
+                    e.details?.GH ? "X" : "", e.details?.RH ? "X" : "", e.details?.SV ? "X" : "", e.details?.SB ? "X" : "",
+                    e.details?.T ? "X" : "", e.details?.NT ? "X" : ""
                 ]);
                 const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -294,7 +314,7 @@
                                         {syncStatus === 'local' ? 'LOCAL MODE' : syncStatus}
                                     </span>
                                     <button onClick={() => setShowSettingsModal(true)} className="text-[10px] font-black text-slate-400 hover:text-blue-600 flex items-center gap-1 uppercase tracking-widest">
-                                        <Icon name="refresh-cw" size={10} /> {syncId ? 'Sync Active' : 'Set Sync ID'}
+                                        <Icon name="refresh-cw" size={10} /> {syncId ? `ID: ${syncId}` : 'Set Sync ID'}
                                     </button>
                                 </div>
                             </div>
@@ -368,7 +388,7 @@
                         </div>
                     </Modal>
 
-                    <Modal title={`Edit Entry`} isOpen={editingId !== null} onClose={() => { setEditingId(null); setFormData({ ...formData, category: '', asked: 'Asked', planned: 'Planned', date: getNowForInput(), notes: '', details: { Him: false, Her: false, Both: false, 'Multiple Times': false, GH: false, RH: false, SV: false, SB: false, T: false, NT: false } }); }} onSave={saveEdit}><FormContent data={formData} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
+                    <Modal title={`Edit Entry`} isOpen={editingId !== null} onClose={() => { setEditingId(null); resetForm(); }} onSave={saveEdit}><FormContent data={formData} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
                     <Modal title="Manual Entry" isOpen={showManualModal && !editingId} onClose={() => setShowManualModal(false)} onSave={() => handleAddEntry('Manual')}><FormContent data={{...formData, category: 'Manual'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
                     <Modal title="Did Not Receive" isOpen={showDnrModal && !editingId} onClose={() => setShowDnrModal(false)} onSave={() => handleAddEntry('Did Not Receive')}><FormContent data={{...formData, category: 'Did Not Receive'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
                     <Modal title="Received Entry" isOpen={showRecModal && !editingId} onClose={() => setShowRecModal(false)} onSave={() => handleAddEntry('Received')}><FormContent data={{...formData, category: 'Received'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
