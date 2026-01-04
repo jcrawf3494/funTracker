@@ -4,25 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Activity Tracker</title>
-    <!-- React, ReactDOM, and Babel for in-browser JSX transformation -->
+    <!-- React, ReactDOM, and Babel -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Tailwind CSS for styling -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        window.FirebaseSDK = { initializeApp, getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc };
+    </script>
     <style>
-        /* Custom animations to match the React app experience */
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideInUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-in { animation: fadeIn 0.3s ease-out forwards; }
         .slide-in-from-bottom { animation: slideInUp 0.3s ease-out forwards; }
-        
-        /* Ensure the date-time input looks consistent across mobile browsers */
-        input[type="datetime-local"] {
-            min-height: 3rem;
-        }
+        input[type="datetime-local"] { min-height: 3rem; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans">
@@ -31,15 +34,24 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // Custom Icon Component to handle Lucide icons in a browser-ready way
+        // Configuration handling: Use environment variables if in Canvas, fallback to hardcoded keys
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
+            ? JSON.parse(__firebase_config) 
+            : {
+                apiKey: "AIzaSyCP6B9_DJ9MnbqJyKpcu4zv14SPOuOIdeQ",
+                authDomain: "fun-time-tracker.firebaseapp.com",
+                projectId: "fun-time-tracker",
+                storageBucket: "fun-time-tracker.firebasestorage.app",
+                messagingSenderId: "865286721478",
+                appId: "1:865286721478:web:b69cc2df0dd596217dacc7"
+            };
+            
+        const appId = typeof __app_id !== 'undefined' ? __app_id : "fun-time-tracker-v1";
+
         const Icon = ({ name, size = 24, className = "" }) => {
             useEffect(() => {
-                // This triggers the Lucide library to replace the <i> tag with an SVG
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
+                if (window.lucide) window.lucide.createIcons();
             }, [name]);
-
             return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
         };
 
@@ -51,9 +63,8 @@
 
         const FormContent = ({ data, onChange, onToggle }) => {
             const isManual = data.category === 'Manual';
-
             return (
-                <div className="space-y-6">
+                <div className="space-y-6 text-left">
                     <div className="relative">
                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest flex items-center gap-1">
                             <Icon name="calendar" size={12} /> Date & Time
@@ -65,7 +76,6 @@
                             className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 md:p-3 font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all text-slate-700"
                         />
                     </div>
-
                     <div className={`grid ${isManual ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
                         {!isManual && (
                             <div className="relative">
@@ -78,12 +88,8 @@
                                     <option>Asked</option>
                                     <option>Did Not Ask</option>
                                 </select>
-                                <div className="absolute right-4 bottom-4 pointer-events-none text-slate-400">
-                                    <Icon name="chevron-right" size={16} className="rotate-90" />
-                                </div>
                             </div>
                         )}
-
                         <div className="relative">
                             <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
                                 {isManual ? 'Type' : 'Planning'}
@@ -96,15 +102,11 @@
                                 <option value="Planned">{isManual ? 'P' : 'Planned'}</option>
                                 <option value="Not Planned">{isManual ? 'No P' : 'Not Planned'}</option>
                             </select>
-                            <div className="absolute right-4 bottom-4 pointer-events-none text-slate-400">
-                                <Icon name="chevron-right" size={16} className="rotate-90" />
-                            </div>
                         </div>
                     </div>
-
                     {data.category === 'Received' && (
                         <div className="animate-in">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 ml-1 tracking-widest">Details (Check all that apply)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 ml-1 tracking-widest">Details</label>
                             <div className="grid grid-cols-2 gap-3">
                                 {Object.keys(data.details).map(key => (
                                     <button 
@@ -120,7 +122,6 @@
                             </div>
                         </div>
                     )}
-
                     {data.category === 'Did Not Receive' && (
                         <div className="animate-in">
                             <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">Notes</label>
@@ -128,7 +129,7 @@
                                 value={data.notes}
                                 onChange={(e) => onChange({...data, notes: e.target.value})}
                                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 h-32 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 outline-none text-lg transition-all"
-                                placeholder="Enter any additional details..."
+                                placeholder="Enter details..."
                             />
                         </div>
                     )}
@@ -138,6 +139,9 @@
 
         const App = () => {
             const [entries, setEntries] = useState([]);
+            const [user, setUser] = useState(null);
+            const [syncStatus, setSyncStatus] = useState('initializing');
+            const [errorMessage, setErrorMessage] = useState(null);
             const [showDnrModal, setShowDnrModal] = useState(false);
             const [showRecModal, setShowRecModal] = useState(false);
             const [showManualModal, setShowManualModal] = useState(false);
@@ -155,17 +159,71 @@
                 }
             });
 
+            // Firebase Initialization following MANDATORY RULE 3
             useEffect(() => {
-                const saved = localStorage.getItem('tracker_data');
-                if (saved) {
-                    try { setEntries(JSON.parse(saved)); } catch (e) { console.error(e); }
+                if (!window.FirebaseSDK) return;
+                const { initializeApp, getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } = window.FirebaseSDK;
+                
+                try {
+                    const app = initializeApp(firebaseConfig);
+                    const auth = getAuth(app);
+
+                    const initAuth = async () => {
+                        try {
+                            // MANDATORY RULE: Custom Token Priority
+                            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                await signInWithCustomToken(auth, __initial_auth_token);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (err) {
+                            console.error("Auth error", err);
+                            setSyncStatus('error');
+                            if (err.message.includes('requests-from-referer')) {
+                                setErrorMessage("API Key blocked: Please whitelist 'scf.usercontent.goog' in your Google Cloud Console for this preview to work.");
+                            } else {
+                                setErrorMessage(err.message);
+                            }
+                        }
+                    };
+                    initAuth();
+
+                    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+                        setUser(currentUser);
+                        if (!currentUser) setSyncStatus('offline');
+                    });
+
+                    return () => unsubscribeAuth();
+                } catch (e) {
+                    console.error("Firebase Init Error", e);
                 }
             }, []);
 
+            // Firestore Data Sync following MANDATORY RULE 1 & 2
             useEffect(() => {
-                localStorage.setItem('tracker_data', JSON.stringify(entries));
-                if (window.lucide) window.lucide.createIcons();
-            }, [entries]);
+                if (!user || !window.FirebaseSDK) return;
+                const { getFirestore, collection, onSnapshot } = window.FirebaseSDK;
+                const db = getFirestore();
+
+                // Path structure: artifacts / appId / users / userId / entries
+                const entriesCol = collection(db, 'artifacts', appId, 'users', user.uid, 'entries');
+                setSyncStatus('syncing');
+
+                const unsubscribe = onSnapshot(entriesCol, (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+                    // MANDATORY RULE 2: Sort in memory
+                    data.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    setEntries(data);
+                    setSyncStatus('synced');
+                    setErrorMessage(null);
+                }, (err) => {
+                    console.error("Firestore error", err);
+                    setSyncStatus('error');
+                    setErrorMessage("Connection Error: Check your Firebase Database rules.");
+                });
+
+                return () => unsubscribe();
+            }, [user]);
 
             const resetForm = (category = '') => {
                 setFormData({
@@ -181,38 +239,51 @@
                 });
             };
 
-            const handleAddEntry = (category) => {
+            const handleAddEntry = async (category) => {
+                const id = Date.now().toString();
                 const newEntry = {
                     ...formData,
                     category: category,
-                    id: Date.now(),
                     timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                 };
-                setEntries([newEntry, ...entries]);
-                setShowDnrModal(false);
-                setShowRecModal(false);
-                setShowManualModal(false);
+
+                if (user && window.FirebaseSDK) {
+                    const { getFirestore, doc, setDoc } = window.FirebaseSDK;
+                    const db = getFirestore();
+                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'entries', id), newEntry);
+                } else {
+                    setEntries([ { ...newEntry, id }, ...entries ]);
+                }
+
+                setShowDnrModal(false); setShowRecModal(false); setShowManualModal(false);
                 resetForm();
             };
 
-            const deleteEntry = (id) => {
-                if (window.confirm("Delete this entry?")) {
+            const deleteEntry = async (id) => {
+                if (!window.confirm("Delete this entry?")) return;
+                if (user && window.FirebaseSDK) {
+                    const { getFirestore, doc, deleteDoc } = window.FirebaseSDK;
+                    const db = getFirestore();
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'entries', id));
+                } else {
                     setEntries(entries.filter(e => e.id !== id));
                 }
             };
 
-            const startEditing = (entry) => {
-                setEditingId(entry.id);
-                setFormData({ ...entry });
-            };
-
-            const saveEdit = () => {
+            const saveEdit = async () => {
                 const updatedEntry = {
                     ...formData,
-                    id: editingId,
                     timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                 };
-                setEntries(entries.map(e => e.id === editingId ? updatedEntry : e));
+
+                if (user && window.FirebaseSDK) {
+                    const { getFirestore, doc, setDoc } = window.FirebaseSDK;
+                    const db = getFirestore();
+                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'entries', editingId), updatedEntry);
+                } else {
+                    setEntries(entries.map(e => e.id === editingId ? { ...updatedEntry, id: editingId } : e));
+                }
+
                 setEditingId(null);
                 resetForm();
             };
@@ -227,7 +298,7 @@
             const exportToCSV = () => {
                 const headers = ["Date", "Category", "Asked/Not", "Planned/Not", "Notes", "Him", "Her", "Both", "Multiple Times", "GH", "RH", "SV", "SB", "T", "NT"];
                 const rows = entries.map(e => [
-                    `"${e.date || e.timestamp}"`, `"${e.category}"`, `"${e.asked}"`, `"${e.planned}"`, `"${e.notes || ''}"`,
+                    `"${e.date}"`, `"${e.category}"`, `"${e.asked}"`, `"${e.planned}"`, `"${e.notes || ''}"`,
                     e.details.Him ? "X" : "", e.details.Her ? "X" : "", e.details.Both ? "X" : "", e.details['Multiple Times'] ? "X" : "",
                     e.details.GH ? "X" : "", e.details.RH ? "X" : "", e.details.SV ? "X" : "", e.details.SB ? "X" : "",
                     e.details.T ? "X" : "", e.details.NT ? "X" : ""
@@ -255,7 +326,7 @@
                             </div>
                             <div className="px-6 py-5 bg-white border-t border-slate-50 flex flex-col md:flex-row gap-3">
                                 <button onClick={onSave} className="w-full md:order-2 px-6 py-4 md:py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 active:scale-95 transition-all font-bold text-lg md:text-base shadow-xl shadow-blue-100 flex items-center justify-center gap-2">
-                                    <Icon name="check" size={20} /> Confirm Entry
+                                    <Icon name="check" size={20} /> Confirm
                                 </button>
                                 <button onClick={onClose} className="w-full md:order-1 px-6 py-4 md:py-3 text-slate-400 font-bold md:font-medium hover:bg-slate-50 rounded-2xl transition-all">Discard</button>
                             </div>
@@ -270,16 +341,32 @@
                         <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 text-center md:text-left">
                             <div>
                                 <h1 className="text-5xl font-black tracking-tighter text-slate-900 leading-none mb-2">TRACKER</h1>
-                                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">Activity Log System</p>
+                                <div className="flex items-center justify-center md:justify-start gap-2">
+                                    <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">Activity Log System</p>
+                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${
+                                        syncStatus === 'synced' ? 'bg-emerald-100 text-emerald-600' : 
+                                        syncStatus === 'syncing' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'
+                                    }`}>
+                                        {syncStatus}
+                                    </span>
+                                </div>
                             </div>
                             <button 
                                 onClick={exportToCSV}
                                 disabled={entries.length === 0}
                                 className="flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white px-8 py-4 rounded-2xl font-black text-sm shadow-xl shadow-emerald-100 transition-all disabled:opacity-50 disabled:grayscale"
                             >
-                                <Icon name="download" size={18} /> EXPORT DATA (CSV)
+                                <Icon name="download" size={18} /> EXPORT DATA
                             </button>
                         </header>
+
+                        {/* Error Notification */}
+                        {errorMessage && (
+                            <div className="mb-8 bg-red-50 border-2 border-red-200 p-4 rounded-2xl flex items-start gap-3 animate-in">
+                                <Icon name="alert-circle" size={20} className="text-red-500 mt-0.5 shrink-0" />
+                                <p className="text-sm font-bold text-red-700 leading-tight">{errorMessage}</p>
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
                             <button onClick={() => { resetForm('Manual'); setShowManualModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-indigo-400 hover:shadow-md">
@@ -288,11 +375,11 @@
                             </button>
                             <button onClick={() => { resetForm('Did Not Receive'); setShowDnrModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-red-400 hover:shadow-md">
                                 <div className="p-5 rounded-2xl bg-red-50 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-all shadow-sm"><Icon name="alert-circle" size={40} /></div>
-                                <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center">Did Not Receive</h2>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center text-red-600">Did Not Receive</h2>
                             </button>
                             <button onClick={() => { resetForm('Received'); setShowRecModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] transition-all hover:border-blue-400 hover:shadow-md">
                                 <div className="p-5 rounded-2xl bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all shadow-sm"><Icon name="plus-circle" size={40} /></div>
-                                <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center">Received</h2>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center text-blue-600">Received</h2>
                             </button>
                         </div>
 
@@ -311,7 +398,7 @@
                         ) : (
                             <div className="space-y-4">
                                 {entries.map((entry) => (
-                                    <div key={entry.id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group">
+                                    <div key={entry.id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group animate-in">
                                         <div className="flex justify-between items-start gap-4 text-left">
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-3 mb-2">
@@ -339,7 +426,7 @@
                                                 </div>
                                             </div>
                                             <div className="flex flex-col gap-2">
-                                                <button onClick={() => startEditing(entry)} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"><Icon name="edit-2" size={20} /></button>
+                                                <button onClick={() => { startEditing(entry); entry.category === 'Manual' ? setShowManualModal(true) : entry.category === 'Received' ? setShowRecModal(true) : setShowDnrModal(true); }} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"><Icon name="edit-2" size={20} /></button>
                                                 <button onClick={() => deleteEntry(entry.id)} className="p-3 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all"><Icon name="trash-2" size={20} /></button>
                                             </div>
                                         </div>
@@ -349,16 +436,16 @@
                         )}
                     </div>
 
-                    <Modal title={`Edit Entry`} isOpen={editingId !== null} onClose={() => { setEditingId(null); resetForm(); }} onSave={saveEdit}>
+                    <Modal title={`Edit ${formData.category}`} isOpen={editingId !== null} onClose={() => { setEditingId(null); resetForm(); setShowManualModal(false); setShowDnrModal(false); setShowRecModal(false); }} onSave={saveEdit}>
                         <FormContent data={formData} onChange={setFormData} onToggle={toggleDetail} />
                     </Modal>
-                    <Modal title="Manual Entry" isOpen={showManualModal} onClose={() => setShowManualModal(false)} onSave={() => handleAddEntry('Manual')}>
+                    <Modal title="Manual Entry" isOpen={showManualModal && !editingId} onClose={() => setShowManualModal(false)} onSave={() => handleAddEntry('Manual')}>
                         <FormContent data={{...formData, category: 'Manual'}} onChange={setFormData} onToggle={toggleDetail} />
                     </Modal>
-                    <Modal title="Did Not Receive" isOpen={showDnrModal} onClose={() => setShowDnrModal(false)} onSave={() => handleAddEntry('Did Not Receive')}>
+                    <Modal title="Did Not Receive" isOpen={showDnrModal && !editingId} onClose={() => setShowDnrModal(false)} onSave={() => handleAddEntry('Did Not Receive')}>
                         <FormContent data={{...formData, category: 'Did Not Receive'}} onChange={setFormData} onToggle={toggleDetail} />
                     </Modal>
-                    <Modal title="Received Entry" isOpen={showRecModal} onClose={() => setShowRecModal(false)} onSave={() => handleAddEntry('Received')}>
+                    <Modal title="Received Entry" isOpen={showRecModal && !editingId} onClose={() => setShowRecModal(false)} onSave={() => handleAddEntry('Received')}>
                         <FormContent data={{...formData, category: 'Received'}} onChange={setFormData} onToggle={toggleDetail} />
                     </Modal>
 
