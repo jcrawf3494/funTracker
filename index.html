@@ -16,21 +16,21 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc };
+        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc, getDoc };
     </script>
     <style>
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideInUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-in { animation: fadeIn 0.2s ease-out forwards; }
         .slide-in-from-bottom { animation: slideInUp 0.3s ease-out forwards; }
-        input[type="datetime-local"] { min-height: 3.5rem; -webkit-appearance: none; border-radius: 0.75rem; }
-        select { -webkit-appearance: none; border-radius: 0.75rem; }
+        input[type="datetime-local"] { min-height: 3.5rem; -webkit-appearance: none; border-radius: 1rem; }
+        select { -webkit-appearance: none; border-radius: 1rem; }
         .overscroll-contain { overscroll-behavior: contain; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans selection:bg-blue-100">
+<body class="bg-slate-50 text-slate-900 font-sans selection:bg-blue-100 overscroll-contain">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -64,7 +64,7 @@
             return (
                 <div className="space-y-6 text-left">
                     <div className="relative">
-                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest flex items-center gap-1">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest flex items-center gap-1">
                             <Icon name="calendar" size={12} /> Date & Time
                         </label>
                         <input 
@@ -77,7 +77,7 @@
                     <div className={`grid ${isManual ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
                         {!isManual && (
                             <div className="relative">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">Status</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Status</label>
                                 <select 
                                     value={data.asked}
                                     onChange={(e) => onChange({...data, asked: e.target.value})}
@@ -89,7 +89,7 @@
                             </div>
                         )}
                         <div className="relative">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">
                                 {isManual ? 'Type' : 'Planning'}
                             </label>
                             <select 
@@ -111,7 +111,7 @@
                                         key={key}
                                         type="button"
                                         onClick={() => onToggle(key)}
-                                        className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all font-bold active:scale-95 ${data.details[key] ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-600'}`}
+                                        className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all font-bold active:scale-95 ${data.details[key] ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-600'}`}
                                     >
                                         <span className="text-sm truncate">{key}</span>
                                         {data.details[key] ? <Icon name="check" size={14} /> : <div className="w-4 h-4 rounded-full border border-slate-200"></div>}
@@ -122,7 +122,7 @@
                     )}
                     {data.category === 'Did Not Receive' && (
                         <div className="animate-in">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">Notes</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Notes</label>
                             <textarea 
                                 value={data.notes}
                                 onChange={(e) => onChange({...data, notes: e.target.value})}
@@ -139,7 +139,7 @@
             const [entries, setEntries] = useState([]);
             const [user, setUser] = useState(null);
             const [syncId, setSyncId] = useState(localStorage.getItem('tracker_sync_id') || '');
-            const [syncStatus, setSyncStatus] = useState('connecting');
+            const [connectionState, setConnectionState] = useState('Connecting...'); 
             const [isLocalMode, setIsLocalMode] = useState(false);
             
             const [showDnrModal, setShowDnrModal] = useState(false);
@@ -158,7 +158,7 @@
                 setFormData({ ...initialFormState, category, date: getNowForInput() });
             };
 
-            // 1. Firebase Initialization & Auth (Rule 3)
+            // 1. Firebase Auth Initializer (Rule 3)
             useEffect(() => {
                 if (!window.FirebaseSDK) return;
                 const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged } = window.FirebaseSDK;
@@ -169,69 +169,99 @@
                     const performAuth = async () => {
                         try {
                             await signInAnonymously(auth);
-                        } catch (e) {
-                            console.warn("Auth blocked by referral rules. Using local storage.");
+                        } catch (err) {
+                            console.warn("Auth blocked or unavailable. Falling back to Local Mode.");
                             setIsLocalMode(true);
-                            setSyncStatus('local');
+                            setSyncStatusFromMode(true, null, syncId);
                         }
                     };
                     performAuth();
 
                     const unsubscribe = onAuthStateChanged(auth, (u) => {
-                        if (u) { setUser(u); setIsLocalMode(false); }
+                        if (u) {
+                            setUser(u);
+                            setIsLocalMode(false);
+                        } else {
+                            setIsLocalMode(true);
+                        }
                     });
                     return () => unsubscribe();
-                } catch (e) { setIsLocalMode(true); setSyncStatus('local'); }
-            }, []);
-
-            // 2. Collection Ref Builder (Rule 1)
-            const getCollectionRef = useCallback((db) => {
-                const { collection } = window.FirebaseSDK;
-                if (syncId && syncId.trim().length > 3) {
-                    // Rule 1: Shared Public Path
-                    return collection(db, 'artifacts', APP_ID, 'public', 'data', syncId.trim());
-                } else if (user) {
-                    // Rule 1: Private path
-                    return collection(db, 'artifacts', APP_ID, 'users', user.uid, 'personal_entries');
+                } catch (e) { 
+                    setIsLocalMode(true); 
                 }
-                return null;
-            }, [syncId, user]);
+            }, [syncId]);
 
-            // 3. Real-time Listener (Rule 2: Sorting in memory)
+            const setSyncStatusFromMode = (local, u, sId) => {
+                if (local) {
+                    setConnectionState('Offline Mode');
+                } else if (sId && sId.trim().length > 2) {
+                    setConnectionState(`Sync Active: ${sId.trim()}`);
+                } else if (u) {
+                    setConnectionState('Private Cloud');
+                }
+            };
+
+            // 2. Data Synchronization (The Engine - Rule 1 & 2)
             useEffect(() => {
                 if (isLocalMode) {
                     const saved = localStorage.getItem('tracker_backup');
                     if (saved) setEntries(JSON.parse(saved).sort((a,b) => new Date(b.date) - new Date(a.date)));
+                    setConnectionState('Offline Mode');
                     return;
                 }
                 if (!user || !window.FirebaseSDK) return;
 
-                const { getFirestore, onSnapshot } = window.FirebaseSDK;
+                const { getFirestore, collection, onSnapshot } = window.FirebaseSDK;
                 const db = getFirestore();
-                const colRef = getCollectionRef(db);
-                if (!colRef) return;
+                
+                let targetCol;
+                const cleanSyncId = syncId.trim();
+                if (cleanSyncId.length > 2) {
+                    // Shared Path - Rule 1
+                    targetCol = collection(db, 'artifacts', APP_ID, 'public', 'data', cleanSyncId);
+                    setConnectionState(`Sync Active: ${cleanSyncId}`);
+                } else {
+                    // Personal Path - Rule 1
+                    targetCol = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'entries');
+                    setConnectionState('Private Cloud');
+                }
 
-                setSyncStatus('syncing');
-                const unsubscribe = onSnapshot(colRef, (snapshot) => {
+                const unsubscribe = onSnapshot(targetCol, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+                    // Rule 2: Sorting in memory
                     data.sort((a, b) => new Date(b.date) - new Date(a.date));
                     setEntries(data);
-                    setSyncStatus('synced');
                 }, (err) => {
-                    console.error("Firestore sync error - check your rules!", err);
-                    setSyncStatus('error');
+                    console.error("Firestore error:", err.code);
+                    if (err.code === 'permission-denied') {
+                        setConnectionState('Permission Denied');
+                    } else {
+                        setConnectionState('Sync Error');
+                    }
                 });
+
                 return () => unsubscribe();
-            }, [user, syncId, isLocalMode, getCollectionRef]);
+            }, [user, syncId, isLocalMode]);
 
             const handleAddEntry = async (category) => {
                 const id = Date.now().toString();
-                const newEntry = { ...formData, category, timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) };
+                const newEntry = { 
+                    ...formData, 
+                    category, 
+                    timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+                };
 
                 if (!isLocalMode && user && window.FirebaseSDK) {
-                    const { getFirestore, doc, setDoc } = window.FirebaseSDK;
-                    const ref = getCollectionRef(getFirestore());
-                    await setDoc(doc(ref, id), newEntry);
+                    const { getFirestore, doc, setDoc, collection } = window.FirebaseSDK;
+                    const db = getFirestore();
+                    let ref;
+                    const cleanSyncId = syncId.trim();
+                    if (cleanSyncId.length > 2) {
+                        ref = doc(collection(db, 'artifacts', APP_ID, 'public', 'data', cleanSyncId), id);
+                    } else {
+                        ref = doc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'entries'), id);
+                    }
+                    await setDoc(ref, newEntry);
                 } else {
                     const updated = [ { ...newEntry, id }, ...entries ].sort((a,b) => new Date(b.date) - new Date(a.date));
                     setEntries(updated);
@@ -244,9 +274,16 @@
             const deleteEntry = async (id) => {
                 if (!window.confirm("Delete entry?")) return;
                 if (!isLocalMode && user && window.FirebaseSDK) {
-                    const { getFirestore, doc, deleteDoc } = window.FirebaseSDK;
-                    const ref = getCollectionRef(getFirestore());
-                    await deleteDoc(doc(ref, id));
+                    const { getFirestore, doc, deleteDoc, collection } = window.FirebaseSDK;
+                    const db = getFirestore();
+                    let ref;
+                    const cleanSyncId = syncId.trim();
+                    if (cleanSyncId.length > 2) {
+                        ref = doc(collection(db, 'artifacts', APP_ID, 'public', 'data', cleanSyncId), id);
+                    } else {
+                        ref = doc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'entries'), id);
+                    }
+                    await deleteDoc(ref);
                 } else {
                     const updated = entries.filter(e => e.id !== id);
                     setEntries(updated);
@@ -257,9 +294,16 @@
             const saveEdit = async () => {
                 const updated = { ...formData, timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) };
                 if (!isLocalMode && user && window.FirebaseSDK) {
-                    const { getFirestore, doc, setDoc } = window.FirebaseSDK;
-                    const ref = getCollectionRef(getFirestore());
-                    await setDoc(doc(ref, editingId), updated);
+                    const { getFirestore, doc, setDoc, collection } = window.FirebaseSDK;
+                    const db = getFirestore();
+                    let ref;
+                    const cleanSyncId = syncId.trim();
+                    if (cleanSyncId.length > 2) {
+                        ref = doc(collection(db, 'artifacts', APP_ID, 'public', 'data', cleanSyncId), editingId);
+                    } else {
+                        ref = doc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'entries'), editingId);
+                    }
+                    await setDoc(ref, updated);
                 } else {
                     const list = entries.map(e => e.id === editingId ? { ...updated, id: editingId } : e).sort((a,b) => new Date(b.date) - new Date(a.date));
                     setEntries(list);
@@ -278,27 +322,29 @@
                     e.details?.T ? "X" : "", e.details?.NT ? "X" : ""
                 ]);
                 const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
                 const link = document.createElement("a");
-                link.setAttribute("href", URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })));
-                link.setAttribute("download", `tracker_${syncId || 'export'}.csv`);
+                link.setAttribute("href", url);
+                link.setAttribute("download", `activity_tracker_${syncId || 'export'}.csv`);
                 link.click();
             };
 
             const Modal = ({ title, isOpen, onClose, onSave, children, saveLabel = "Confirm" }) => {
                 if (!isOpen) return null;
                 return (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50">
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-end md:items-center justify-center z-50">
                         <div className="bg-white rounded-t-[2.5rem] md:rounded-3xl shadow-2xl w-full max-w-lg max-h-[95vh] flex flex-col overflow-hidden slide-in-from-bottom">
-                            <div className="px-6 pt-6 pb-4 flex justify-between items-center bg-white border-b border-slate-50">
+                            <div className="px-6 pt-7 pb-4 flex justify-between items-center bg-white border-b border-slate-50">
                                 <h3 className="text-2xl font-black text-slate-800 tracking-tight">{title}</h3>
-                                <button onClick={onClose} className="p-2 bg-slate-100 text-slate-400 rounded-full"><Icon name="x" size={20} /></button>
+                                <button onClick={onClose} className="p-3 bg-slate-100 text-slate-400 rounded-full active:scale-90 transition-all"><Icon name="x" size={20} /></button>
                             </div>
-                            <div className="p-6 overflow-y-auto flex-1 overscroll-contain pb-12">{children}</div>
-                            <div className="px-6 py-5 bg-white border-t border-slate-50 flex flex-col md:flex-row gap-3">
-                                <button onClick={onSave} className="w-full md:order-2 px-6 py-4 bg-blue-600 text-white rounded-2xl font-bold active:scale-95 shadow-xl shadow-blue-200 flex items-center justify-center gap-2">
-                                    <Icon name="check" size={20} /> {saveLabel}
+                            <div className="p-6 overflow-y-auto flex-1 overscroll-contain pb-20">{children}</div>
+                            <div className="px-6 py-6 bg-white border-t border-slate-50 flex flex-col md:flex-row gap-3">
+                                <button onClick={onSave} className="w-full md:order-2 px-6 py-4 bg-blue-600 text-white rounded-2xl font-black text-lg active:scale-95 shadow-xl shadow-blue-100 flex items-center justify-center gap-2">
+                                    <Icon name="check-circle" size={20} /> {saveLabel}
                                 </button>
-                                <button onClick={onClose} className="w-full md:order-1 px-6 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl">Cancel</button>
+                                <button onClick={onClose} className="w-full md:order-1 px-6 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-all">Cancel</button>
                             </div>
                         </div>
                     </div>
@@ -307,73 +353,76 @@
 
             return (
                 <div className="min-h-screen pb-24 md:pb-12 px-4 pt-8 md:pt-12 max-w-5xl mx-auto">
-                    <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 text-center md:text-left">
-                        <div>
-                            <h1 className="text-5xl font-black tracking-tighter text-slate-900 leading-none mb-2">TRACKER</h1>
+                    <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-8 text-center md:text-left">
+                        <div className="space-y-1">
+                            <h1 className="text-6xl font-black tracking-tighter text-slate-900 leading-none">TRACKER</h1>
                             <div className="flex items-center justify-center md:justify-start gap-3">
-                                <span className={`text-[8px] font-black px-2 py-1 rounded uppercase tracking-widest ${syncStatus === 'synced' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-700'}`}>
-                                    {syncStatus === 'local' ? 'OFFLINE' : syncStatus}
+                                <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest ${
+                                    connectionState.startsWith('Sync Active') ? 'bg-emerald-500 text-white' : 
+                                    connectionState.includes('Private') ? 'bg-blue-500 text-white' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                    {connectionState}
                                 </span>
-                                <button onClick={() => setShowSettingsModal(true)} className="text-[10px] font-black text-slate-400 hover:text-blue-600 flex items-center gap-1 uppercase tracking-widest border-b border-transparent hover:border-blue-200 transition-all">
-                                    <Icon name="refresh-cw" size={10} /> {syncId ? `ID: ${syncId}` : 'Set Sync ID'}
+                                <button onClick={() => setShowSettingsModal(true)} className="text-[10px] font-black text-slate-400 hover:text-blue-600 flex items-center gap-1 uppercase tracking-widest underline decoration-2 underline-offset-4 transition-all">
+                                    {syncId ? 'Update Sync ID' : 'Enable Device Sync'}
                                 </button>
                             </div>
                         </div>
-                        <button onClick={exportToCSV} disabled={entries.length === 0} className="flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white px-8 py-4 rounded-2xl font-black text-sm shadow-xl shadow-emerald-100 disabled:opacity-50">
-                            <Icon name="download" size={18} /> EXPORT CSV
+                        <button onClick={exportToCSV} disabled={entries.length === 0} className="flex items-center justify-center gap-3 bg-slate-900 hover:bg-black active:scale-95 text-white px-8 py-5 rounded-[2rem] font-black text-sm shadow-xl transition-all disabled:opacity-30">
+                            <Icon name="download" size={18} /> EXPORT RESULTS
                         </button>
                     </header>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
-                        <button onClick={() => { resetForm('Manual'); setShowManualModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] hover:border-indigo-400 transition-all">
-                            <div className="p-5 rounded-2xl bg-indigo-50 text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition-all"><Icon name="settings" size={40} /></div>
-                            <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4">Manual</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-12">
+                        <button onClick={() => { resetForm('Manual'); setShowManualModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm active:scale-[0.97] hover:border-indigo-400 transition-all">
+                            <div className="p-6 rounded-[1.5rem] bg-indigo-50 text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition-all shadow-sm"><Icon name="edit-3" size={40} /></div>
+                            <h2 className="text-xl font-black tracking-tight text-slate-800 mt-4 uppercase tracking-wider">Manual</h2>
                         </button>
-                        <button onClick={() => { resetForm('Did Not Receive'); setShowDnrModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] hover:border-red-400 transition-all">
-                            <div className="p-5 rounded-2xl bg-red-50 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-all"><Icon name="alert-circle" size={40} /></div>
-                            <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4">No Result</h2>
+                        <button onClick={() => { resetForm('Did Not Receive'); setShowDnrModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm active:scale-[0.97] hover:border-red-400 transition-all">
+                            <div className="p-6 rounded-[1.5rem] bg-red-50 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-all shadow-sm"><Icon name="slash" size={40} /></div>
+                            <h2 className="text-xl font-black tracking-tight text-slate-800 mt-4 uppercase tracking-wider">No Result</h2>
                         </button>
-                        <button onClick={() => { resetForm('Received'); setShowRecModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] hover:border-blue-400 transition-all">
-                            <div className="p-5 rounded-2xl bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all"><Icon name="plus-circle" size={40} /></div>
-                            <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4">Received</h2>
+                        <button onClick={() => { resetForm('Received'); setShowRecModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm active:scale-[0.97] hover:border-blue-400 transition-all">
+                            <div className="p-6 rounded-[1.5rem] bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all shadow-sm"><Icon name="check-circle" size={40} /></div>
+                            <h2 className="text-xl font-black tracking-tight text-slate-800 mt-4 uppercase tracking-wider text-center leading-tight">Received</h2>
                         </button>
                     </div>
 
                     <div className="mb-6 flex items-center justify-between px-2 text-slate-400">
-                        <h3 className="text-xs font-black tracking-[0.3em] uppercase flex items-center gap-2"><Icon name="history" size={16} /> Log History</h3>
+                        <h3 className="text-[10px] font-black tracking-[0.4em] uppercase flex items-center gap-2"><Icon name="list" size={14} /> Log History</h3>
                         <div className="h-[1px] flex-1 mx-4 bg-slate-200"></div>
-                        <span className="text-[10px] font-black px-2 py-1 bg-slate-900 text-white rounded">{entries.length}</span>
+                        <span className="text-[10px] font-black px-3 py-1 bg-slate-900 text-white rounded-full tracking-widest">{entries.length} RECORDS</span>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-4 pb-20">
                         {entries.length === 0 ? (
-                            <div className="bg-white rounded-[2rem] p-16 text-center border-2 border-dashed border-slate-200 flex flex-col items-center text-slate-400 font-bold italic">No records logged</div>
+                            <div className="bg-white rounded-[2rem] p-16 text-center border-2 border-dashed border-slate-200 flex flex-col items-center text-slate-300 font-bold italic tracking-wide animate-in">No activity logged in this sync bucket</div>
                         ) : (
                             entries.map((entry) => (
-                                <div key={entry.id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-all group animate-in">
+                                <div key={entry.id} className="bg-white rounded-[2rem] p-7 shadow-sm border border-slate-100 hover:shadow-md transition-all group animate-in">
                                     <div className="flex justify-between items-start gap-4">
                                         <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full text-white ${entry.category === 'Received' ? 'bg-blue-600' : entry.category === 'Manual' ? 'bg-indigo-600' : 'bg-red-500'}`}>{entry.category}</span>
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full text-white ${entry.category === 'Received' ? 'bg-blue-600' : entry.category === 'Manual' ? 'bg-indigo-600' : 'bg-red-500'}`}>{entry.category}</span>
                                                 <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">{entry.timestamp}</span>
                                             </div>
-                                            <h4 className="font-black text-xl text-slate-800 flex items-center flex-wrap gap-x-2">
-                                                {entry.category !== 'Manual' ? entry.asked : 'Manual Entry'}
-                                                <Icon name="chevron-right" size={14} className="text-slate-300" />
-                                                <span className="text-slate-500 font-bold">{entry.category === 'Manual' ? (entry.planned === 'Planned' ? 'P' : 'No P') : entry.planned}</span>
+                                            <h4 className="font-black text-2xl text-slate-800 flex items-center flex-wrap gap-x-2 mb-4">
+                                                {entry.category !== 'Manual' ? entry.asked : 'Entry'}
+                                                <Icon name="arrow-right" size={16} className="text-slate-200" />
+                                                <span className="text-slate-400">{entry.category === 'Manual' ? (entry.planned === 'Planned' ? 'P' : 'No P') : entry.planned}</span>
                                             </h4>
-                                            <div className="mt-4 space-y-3">
+                                            <div className="space-y-3">
                                                 {entry.details && Object.entries(entry.details).some(([_,v]) => v) && (
-                                                    <div className="flex flex-wrap gap-1.5">
-                                                        {Object.entries(entry.details).filter(([_,v]) => v).map(([k]) => <span key={k} className="bg-slate-100 text-slate-600 text-[10px] px-3 py-1 rounded-lg font-black uppercase border border-slate-200">{k}</span>)}
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {Object.entries(entry.details).filter(([_,v]) => v).map(([k]) => <span key={k} className="bg-slate-50 text-slate-600 text-[10px] px-3 py-1.5 rounded-xl font-black uppercase border border-slate-100">{k}</span>)}
                                                     </div>
                                                 )}
-                                                {entry.notes && <div className="bg-slate-50 p-3 rounded-xl border-l-4 border-slate-200 text-slate-600 text-sm italic italic">"{entry.notes}"</div>}
+                                                {entry.notes && <div className="bg-slate-50 p-4 rounded-2xl border-l-4 border-slate-200 text-slate-600 text-sm italic leading-relaxed">"{entry.notes}"</div>}
                                             </div>
                                         </div>
                                         <div className="flex flex-col gap-2">
-                                            <button onClick={() => { startEditing(entry); if (entry.category === 'Manual') setShowManualModal(true); else if (entry.category === 'Received') setShowRecModal(true); else setShowDnrModal(true); }} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"><Icon name="edit-2" size={20} /></button>
-                                            <button onClick={() => deleteEntry(entry.id)} className="p-3 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all"><Icon name="trash-2" size={20} /></button>
+                                            <button onClick={() => { startEditing(entry); if (entry.category === 'Manual') setShowManualModal(true); else if (entry.category === 'Received') setShowRecModal(true); else setShowDnrModal(true); }} className="p-4 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all active:scale-90"><Icon name="edit-3" size={24} /></button>
+                                            <button onClick={() => deleteEntry(entry.id)} className="p-4 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all active:scale-90"><Icon name="trash-2" size={24} /></button>
                                         </div>
                                     </div>
                                 </div>
@@ -381,17 +430,25 @@
                         )}
                     </div>
 
-                    <Modal title="Sync ID Settings" isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} onSave={() => { localStorage.setItem('tracker_sync_id', syncId); setShowSettingsModal(false); }} saveLabel="Apply Sync ID">
-                        <div className="space-y-4">
-                            <p className="text-sm text-slate-500 font-medium">Enter a unique ID on both devices to share data. Keep it secret.</p>
-                            <input type="text" value={syncId} onChange={(e) => setSyncId(e.target.value)} placeholder="e.g. MyPersonalLog123" className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold outline-none focus:border-blue-500" />
+                    {/* Sync ID Setup Modal */}
+                    <Modal title="Sync Configuration" isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} onSave={() => { localStorage.setItem('tracker_sync_id', syncId); setShowSettingsModal(false); window.location.reload(); }} saveLabel="Apply & Sync">
+                        <div className="space-y-6">
+                            <div className="bg-blue-50 p-5 rounded-2xl border-2 border-blue-100 text-blue-800 text-sm font-bold flex gap-3">
+                                <Icon name="info" size={20} className="shrink-0" />
+                                <p>Enter the same Sync ID on all devices to share data. Requires a successful login.</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Enter Sync ID</label>
+                                <input type="text" value={syncId} onChange={(e) => setSyncId(e.target.value)} placeholder="e.g. MySharedLog123" className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-5 font-black text-xl outline-none focus:border-blue-500 transition-all placeholder:text-slate-200" />
+                                <p className="text-[10px] text-slate-400 mt-2 italic px-1">Note: Sync IDs under 3 characters will use local/private mode.</p>
+                            </div>
                         </div>
                     </Modal>
 
-                    <Modal title={`Edit ${formData.category}`} isOpen={editingId !== null} onClose={() => { setEditingId(null); resetForm(); }} onSave={saveEdit}><FormContent data={formData} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
-                    <Modal title="Manual Entry" isOpen={showManualModal && !editingId} onClose={() => setShowManualModal(false)} onSave={() => handleAddEntry('Manual')}><FormContent data={{...formData, category: 'Manual'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
-                    <Modal title="Did Not Receive" isOpen={showDnrModal && !editingId} onClose={() => setShowDnrModal(false)} onSave={() => handleAddEntry('Did Not Receive')}><FormContent data={{...formData, category: 'Did Not Receive'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
-                    <Modal title="Received Entry" isOpen={showRecModal && !editingId} onClose={() => setShowRecModal(false)} onSave={() => handleAddEntry('Received')}><FormContent data={{...formData, category: 'Received'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
+                    <Modal title={`Modify Entry`} isOpen={editingId !== null} onClose={() => { setEditingId(null); resetForm(); }} onSave={saveEdit}><FormContent data={formData} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
+                    <Modal title="Manual Record" isOpen={showManualModal && !editingId} onClose={() => setShowManualModal(false)} onSave={() => handleAddEntry('Manual')}><FormContent data={{...formData, category: 'Manual'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
+                    <Modal title="Report: No Result" isOpen={showDnrModal && !editingId} onClose={() => setShowDnrModal(false)} onSave={() => handleAddEntry('Did Not Receive')}><FormContent data={{...formData, category: 'Did Not Receive'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
+                    <Modal title="Report: Received" isOpen={showRecModal && !editingId} onClose={() => setShowRecModal(false)} onSave={() => handleAddEntry('Received')}><FormContent data={{...formData, category: 'Received'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} /></Modal>
                 </div>
             );
         };
