@@ -50,6 +50,7 @@
             border-radius: 0.75rem; 
         }
         select { -webkit-appearance: none; border-radius: 0.75rem; min-height: 3rem; }
+        textarea { border-radius: 0.75rem; width: 100%; }
         .overscroll-contain { overscroll-behavior: contain; }
     </style>
 </head>
@@ -57,7 +58,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useCallback } = React;
+        const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
         const firebaseConfig = {
             apiKey: "AIzaSyCP6B9_DJ9MnbqJyKpcu4zv14SPOuOIdeQ",
@@ -69,7 +70,7 @@
         };
         const APP_ID = "fun-time-tracker-v1";
 
-        // --- Stable UI Components (Outside App to prevent focus loss) ---
+        // --- Static UI Components ---
 
         const Icon = ({ name, size = 24, className = "" }) => {
             useEffect(() => {
@@ -81,11 +82,11 @@
         const Modal = ({ title, isOpen, onClose, onSave, children, saveLabel = "Confirm", isDestructive = false }) => {
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4">
                     <div className="bg-white rounded-t-[2.5rem] md:rounded-3xl shadow-2xl w-full max-w-lg max-h-[95vh] flex flex-col overflow-hidden slide-in-from-bottom">
                         <div className="px-6 pt-6 pb-4 flex justify-between items-center bg-white border-b border-slate-50">
                             <h3 className="text-2xl font-black text-slate-800 tracking-tight">{title}</h3>
-                            <button onClick={onClose} className="p-2 bg-slate-100 text-slate-400 rounded-full"><Icon name="x" size={20} /></button>
+                            <button onClick={onClose} className="p-2 bg-slate-100 text-slate-400 rounded-full hover:text-slate-600"><Icon name="x" size={20} /></button>
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 overscroll-contain pb-12">{children}</div>
                         <div className="px-6 py-5 bg-white border-t border-slate-50 flex flex-col md:flex-row gap-3">
@@ -153,14 +154,14 @@
                                         onClick={() => onToggle(key)}
                                         className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all font-bold active:scale-95 ${data.details[key] ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-600'}`}
                                     >
-                                        <span className="text-sm truncate">{key}</span>
+                                        <span className="text-sm truncate mr-1">{key}</span>
                                         {data.details[key] ? <Icon name="check" size={14} /> : <div className="w-4 h-4 rounded-full border border-slate-200"></div>}
                                     </button>
                                 ))}
                             </div>
                         </div>
                     )}
-                    {data.category === 'Did Not Receive' && (
+                    {data.category === 'Not Received' && (
                         <div className="animate-in">
                             <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">Notes</label>
                             <textarea 
@@ -181,6 +182,7 @@
             const [entries, setEntries] = useState([]);
             const [user, setUser] = useState(null);
             const [syncStatus, setSyncStatus] = useState('offline');
+            const [isLoaded, setIsLoaded] = useState(false);
             
             // UI State
             const [showDnrModal, setShowDnrModal] = useState(false);
@@ -188,26 +190,27 @@
             const [showManualModal, setShowManualModal] = useState(false);
             const [showAuthModal, setShowAuthModal] = useState(false);
             const [editingId, setEditingId] = useState(null);
-            const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
+            const [authMode, setAuthMode] = useState('login'); 
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [authError, setAuthError] = useState('');
 
-            const initialFormState = {
-                category: '', asked: 'Asked', planned: 'Planned', date: '', notes: '',
-                details: { Him: false, Her: false, Both: false, 'Multiple Times': false, GH: false, RH: false, SV: false, SB: false, T: false, NT: false }
-            };
-            const [formData, setFormData] = useState(initialFormState);
-
-            const getNowForInput = () => {
+            const getNowForInput = useCallback(() => {
                 const now = new Date();
                 now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                 return now.toISOString().slice(0, 16);
-            };
+            }, []);
+
+            const initialFormState = useMemo(() => ({
+                category: '', asked: 'Asked', planned: 'Planned', date: getNowForInput(), notes: '',
+                details: { Him: false, Her: false, Both: false, 'Multiple Times': false, GH: false, RH: false, SV: false, SB: false, T: false, NT: false }
+            }), [getNowForInput]);
+
+            const [formData, setFormData] = useState(initialFormState);
 
             const resetForm = useCallback((category = '') => {
                 setFormData({ ...initialFormState, category, date: getNowForInput() });
-            }, []);
+            }, [initialFormState, getNowForInput]);
 
             // 1. Auth Listener
             useEffect(() => {
@@ -218,9 +221,9 @@
 
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
+                    setIsLoaded(true);
                     if (!u) {
                         setSyncStatus('offline');
-                        // Load local data if not logged in
                         const saved = localStorage.getItem('tracker_local_fallback');
                         if (saved) setEntries(JSON.parse(saved).sort((a,b) => new Date(b.date) - new Date(a.date)));
                     }
@@ -234,7 +237,6 @@
 
                 const { getFirestore, collection, onSnapshot } = window.FirebaseSDK;
                 const db = getFirestore();
-                // Rule: users/{userId}/personal_entries
                 const colRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'personal_entries');
 
                 setSyncStatus('syncing');
@@ -244,8 +246,11 @@
                     setEntries(data);
                     setSyncStatus('synced');
                 }, (err) => {
-                    console.error("Firestore error", err);
+                    console.error("Firestore sync error:", err);
                     setSyncStatus('error');
+                    if (err.code === 'permission-denied') {
+                        setAuthError("Permission denied. Ensure your rules match the app ID.");
+                    }
                 });
                 return () => unsubscribe();
             }, [user]);
@@ -279,15 +284,23 @@
 
             const handleAddEntry = async (category) => {
                 const id = Date.now().toString();
-                const newEntry = { ...formData, category, timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) };
+                const entryToSave = { 
+                    ...formData, 
+                    category, 
+                    timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+                };
 
                 if (user && window.FirebaseSDK) {
                     const { getFirestore, doc, setDoc, collection } = window.FirebaseSDK;
                     const db = getFirestore();
                     const ref = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'personal_entries');
-                    await setDoc(doc(ref, id), newEntry);
+                    try {
+                        await setDoc(doc(ref, id), entryToSave);
+                    } catch (e) {
+                        console.error("Write error:", e);
+                    }
                 } else {
-                    const updated = [ { ...newEntry, id }, ...entries ].sort((a,b) => new Date(b.date) - new Date(a.date));
+                    const updated = [ { ...entryToSave, id }, ...entries ].sort((a,b) => new Date(b.date) - new Date(a.date));
                     setEntries(updated);
                     localStorage.setItem('tracker_local_fallback', JSON.stringify(updated));
                 }
@@ -315,7 +328,10 @@
             };
 
             const saveEdit = async () => {
-                const updated = { ...formData, timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) };
+                const updated = { 
+                    ...formData, 
+                    timestamp: new Date(formData.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+                };
                 if (user && window.FirebaseSDK) {
                     const { getFirestore, doc, setDoc, collection } = window.FirebaseSDK;
                     const db = getFirestore();
@@ -339,11 +355,15 @@
                     e.details?.T ? "X" : "", e.details?.NT ? "X" : ""
                 ]);
                 const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
                 const link = document.createElement("a");
-                link.setAttribute("href", URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })));
+                link.setAttribute("href", url);
                 link.setAttribute("download", `tracker_export.csv`);
                 link.click();
             };
+
+            if (!isLoaded) return <div className="flex h-screen items-center justify-center font-black text-slate-300 tracking-widest animate-pulse">LOADING SYSTEM...</div>;
 
             return (
                 <div className="min-h-screen pb-24 md:pb-12 px-4 pt-8 md:pt-12 max-w-5xl mx-auto">
@@ -355,7 +375,7 @@
                                     {syncStatus}
                                 </span>
                                 <button onClick={() => user ? handleLogout() : setShowAuthModal(true)} className="text-[10px] font-black text-slate-400 hover:text-blue-600 flex items-center gap-1 uppercase tracking-widest transition-all">
-                                    <Icon name={user ? "log-out" : "log-in"} size={10} /> {user ? `Logout: ${user.email}` : 'Sign In to Sync'}
+                                    <Icon name={user ? "log-out" : "log-in"} size={10} /> {user ? user.email : 'Sign In to Sync'}
                                 </button>
                             </div>
                         </div>
@@ -369,9 +389,9 @@
                             <div className="p-5 rounded-2xl bg-indigo-50 text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition-all"><Icon name="settings" size={40} /></div>
                             <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4">Manual</h2>
                         </button>
-                        <button onClick={() => { resetForm('Did Not Receive'); setShowDnrModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] hover:border-red-400 transition-all">
+                        <button onClick={() => { resetForm('Not Received'); setShowDnrModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] hover:border-red-400 transition-all">
                             <div className="p-5 rounded-2xl bg-red-50 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-all"><Icon name="alert-circle" size={40} /></div>
-                            <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4">Not Received</h2>
+                            <h2 className="text-2xl font-black tracking-tight text-slate-800 mt-4 text-center leading-tight">Not Received</h2>
                         </button>
                         <button onClick={() => { resetForm('Received'); setShowRecModal(true); }} className="group flex flex-col items-center justify-center bg-white border-2 border-slate-100 p-8 rounded-[2rem] shadow-sm active:scale-[0.97] hover:border-blue-400 transition-all">
                             <div className="p-5 rounded-2xl bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all"><Icon name="plus-circle" size={40} /></div>
@@ -421,23 +441,27 @@
                         )}
                     </div>
 
-                    {/* Auth Modal */}
-                    <Modal title={authMode === 'login' ? 'Welcome Back' : 'Create Account'} isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSave={handleAuth} saveLabel={authMode === 'login' ? 'Sign In' : 'Register'}>
+                    {/* Authentication Modal */}
+                    <Modal 
+                        title={authMode === 'login' ? 'Sync Account' : 'New Account'} 
+                        isOpen={showAuthModal} 
+                        onClose={() => { setShowAuthModal(false); setAuthError(''); }} 
+                        onSave={handleAuth} 
+                        saveLabel={authMode === 'login' ? 'Login' : 'Create Account'}
+                    >
                         <div className="space-y-4">
-                            <p className="text-sm text-slate-500 font-medium leading-tight">Enter your email and password to sync your logs across all devices.</p>
-                            {authError && <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl border border-red-100">{authError}</div>}
-                            <div className="space-y-2">
-                                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" className="w-full bg-slate-50 border-2 border-slate-100 p-4 font-bold outline-none focus:border-blue-500" />
-                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full bg-slate-50 border-2 border-slate-100 p-4 font-bold outline-none focus:border-blue-500" />
-                            </div>
-                            <button onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="w-full text-xs font-black text-blue-600 uppercase tracking-widest py-2">
-                                {authMode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Login"}
+                            <p className="text-sm text-slate-500 font-medium">Log in to sync your data across all devices.</p>
+                            {authError && <div className="p-3 bg-red-50 text-red-600 text-[10px] font-bold rounded-xl border border-red-100 tracking-tight leading-tight">{authError}</div>}
+                            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="w-full bg-slate-50 border-2 border-slate-100 p-4 font-bold outline-none focus:border-blue-500" />
+                            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full bg-slate-50 border-2 border-slate-100 p-4 font-bold outline-none focus:border-blue-500" />
+                            <button onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="w-full text-[10px] font-black text-blue-600 uppercase tracking-widest text-center py-2">
+                                {authMode === 'login' ? "Need an account? Sign Up" : "Already have an account? Login"}
                             </button>
                         </div>
                     </Modal>
 
                     {/* Entry Modals */}
-                    <Modal title={`Edit ${formData.category}`} isOpen={editingId !== null} onClose={() => { setEditingId(null); resetForm(); }} onSave={saveEdit}>
+                    <Modal title={`Edit Record`} isOpen={editingId !== null} onClose={() => { setEditingId(null); resetForm(); }} onSave={saveEdit}>
                         <FormContent data={formData} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} />
                     </Modal>
                     
@@ -445,8 +469,8 @@
                         <FormContent data={{...formData, category: 'Manual'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} />
                     </Modal>
                     
-                    <Modal title="Not Received" isOpen={showDnrModal && !editingId} onClose={() => setShowDnrModal(false)} onSave={() => handleAddEntry('Did Not Receive')}>
-                        <FormContent data={{...formData, category: 'Did Not Receive'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} />
+                    <Modal title="Not Received" isOpen={showDnrModal && !editingId} onClose={() => setShowDnrModal(false)} onSave={() => handleAddEntry('Not Received')}>
+                        <FormContent data={{...formData, category: 'Not Received'}} onChange={setFormData} onToggle={(key) => setFormData(p => ({...p, details: {...p.details, [key]: !p.details[key]}}))} />
                     </Modal>
                     
                     <Modal title="Received Entry" isOpen={showRecModal && !editingId} onClose={() => setShowRecModal(false)} onSave={() => handleAddEntry('Received')}>
@@ -455,7 +479,8 @@
                 </div>
             );
         };
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
